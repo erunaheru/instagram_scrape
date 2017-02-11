@@ -120,32 +120,39 @@ function returnCachedRSS($feedTitle){
 
 function scrapeRSS($feedTitle) {
 	$results_array = scrape_insta($feedTitle);
-	$rss  = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
-	$rss .= '<rss version="2.0">'."\n";
-	$rss .= '	<channel>'."\n";
-	$rss .= '		<title>'.$feedTitle.'</title>'."\n";
-	$rss .= '		<link>http://instagram.com/'.$feedTitle.'</link>'."\n";
-	$rss .= '		<description/>'."\n";
+	if (!empty($results_array['entry_data']['ProfilePage'][0]['user']['media']['nodes'])) {
+		$rss  = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
+		$rss .= '<rss version="2.0">'."\n";
+		$rss .= '	<channel>'."\n";
+		$rss .= '		<title>'.$feedTitle.'</title>'."\n";
+		$rss .= '		<link>http://instagram.com/'.$feedTitle.'</link>'."\n";
+		$rss .= '		<description/>'."\n";
+		foreach ($results_array['entry_data']['ProfilePage'][0]['user']['media']['nodes'] as $node) {
+			$rss .= '		<item>'."\n";
+			if (empty($node['caption'])) {$title = "(null)"; } else {$title = $node['caption']; }
+			$rss .= '			<title>'.$title.'</title>'."\n";
+			$rss .= '			<link>https://www.instagram.com/p/'.$node['code'].'/</link>'."\n";
+			$rss .= '			<guid isPermaLink="false">'.$node['id'].'</guid>'."\n";
+			$rss .= '			<pubDate>'.date(DATE_RSS,$node['date']).'</pubDate>'."\n";
+			$rss .= '			<description><![CDATA[<img src="'.$node['display_src'].'">]]></description>'."\n";
+			$rss .= '		</item>'."\n";
+		}
 
-	foreach ($results_array['entry_data']['ProfilePage'][0]['user']['media']['nodes'] as $node) {
-		$rss .= '		<item>'."\n";
-		$rss .= '			<title>'.$node['caption'].'</title>'."\n";
-		$rss .= '			<link>https://www.instagram.com/p/'.$node['code'].'/</link>'."\n";
-		$rss .= '			<guid isPermaLink="false">'.$node['id'].'</guid>'."\n";
-		$rss .= '			<pubDate>'.date(DATE_RFC822,$node['date']).'</pubDate>'."\n";
-		$rss .= '			<description>&ltimg src="'.$node['display_src'].'" /&gt;</description>'."\n";
-		$rss .= '		</item>'."\n";
+		$rss .= '	</channel>'."\n";
+		$rss .= '</rss>'."\n";
+		
+		$query = "INSERT into instagramfeeds (feedID, feed, lastUpdate, nextUpdate)
+					values(?, ?, NOW(),FROM_UNIXTIME(UNIX_TIMESTAMP(NOW())+FLOOR(3600+RAND()*3600)))
+				  ON DUPLICATE KEY UPDATE
+					feed=?, lastUpdate = NOW(), nextUpdate = FROM_UNIXTIME(UNIX_TIMESTAMP(NOW())+FLOOR(3600+RAND()*3600))";
+		RSSQuery($query,false,true,array($feedTitle,$rss,$rss));
+		$result = "\n<!-- Found ".count($results_array['entry_data']['ProfilePage'][0]['user']['media']['nodes'])." entries -->";
+	} else {
+		$result = "\n<!-- No entries found -->";
 	}
-
-	$rss .= '	</channel>'."\n";
-	$rss .= '</rss">'."\n";
 	
-	$query = "INSERT into instagramfeeds (feedID, feed, lastUpdate, nextUpdate)
-				values(?, ?, NOW(),FROM_UNIXTIME(UNIX_TIMESTAMP(NOW())+FLOOR(3600+RAND()*3600)))
-			  ON DUPLICATE KEY UPDATE
-				feed=?, lastUpdate = NOW(), nextUpdate = FROM_UNIXTIME(UNIX_TIMESTAMP(NOW())+FLOOR(3600+RAND()*3600))";
-	RSSQuery($query,false,true,array($feedTitle,$rss,$rss));
-	echo $rss;
+	returnCachedRSS($feedTitle);
+	echo $result;
 }
 
 //Supply a username
@@ -154,7 +161,6 @@ if(isset($_GET["name"])) {
 } else {
 	$my_account = 'cosmocatalano'; 
 }
-
 
 if (checkNextUpdate($my_account)) {
 	scrapeRSS($my_account);
